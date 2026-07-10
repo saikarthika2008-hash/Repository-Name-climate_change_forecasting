@@ -2,63 +2,282 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 
-st.set_page_config(page_title="GHG Forecasting Dashboard", layout="wide")
+# ---------------------------------------------------------
+# PAGE CONFIG
+# ---------------------------------------------------------
+st.set_page_config(
+    page_title="GHG Trend Analysis",
+    page_icon="🌍",
+    layout="wide"
+)
 
-st.title("🌍 Climate Change Trend Analysis & Scenario Forecasting Dashboard")
-st.markdown("---")
+# ---------------------------------------------------------
+# DARK THEME
+# ---------------------------------------------------------
+st.markdown("""
+<style>
 
-# Load compiled assets safely from your local directory
+.stApp{
+    background-color:#111827;
+    color:white;
+}
+
+section[data-testid="stSidebar"]{
+    background-color:#1f2937;
+}
+
+h1,h2,h3,h4,h5,h6,p,label{
+    color:white !important;
+}
+
+[data-testid="stMetricValue"]{
+    color:white;
+}
+
+div[data-baseweb="select"]{
+    color:black;
+}
+
+</style>
+""",unsafe_allow_html=True)
+
+# ---------------------------------------------------------
+# LOAD DATA
+# ---------------------------------------------------------
 @st.cache_data
-def load_internal_data():
+def load_data():
     hist = pd.read_csv("owid-co2-data.csv")
     scen = pd.read_csv("scenario_projections.csv")
     return hist, scen
 
-df_hist, df_scen = load_internal_data()
+df_hist, df_scen = load_data()
 
-# Metric sidebar controls
-st.sidebar.header("Navigation & Filters")
-# Find the intersection of countries present in both datasets to prevent errors
-countries_in_hist = set(df_hist['country'].unique())
-countries_in_scen = set(df_scen['country'].unique())
-common_countries = countries_in_hist.intersection(countries_in_scen)
+# ---------------------------------------------------------
+# SIDEBAR
+# ---------------------------------------------------------
+st.sidebar.title("🌍 GHG Trend Analysis")
+st.sidebar.caption("IDEAS TIH Summer Internship 2026")
 
-target_countries = sorted(list(common_countries))
-selected_country = st.sidebar.selectbox("Select Target Country Focus", target_countries)
+page = st.sidebar.radio(
+    "Navigate",
+    [
+        "Overview",
+        "Historical Trends",
+        "Country Profile",
+        "Forecasts",
+        "Scenario Comparison",
+        "About"
+    ]
+)
 
-# Section 1: Key Performance Indicators
-st.subheader(f"📊 Macro Metrics Profile: {selected_country}")
-c_hist = df_hist[df_hist['country'] == selected_country].sort_values('year')
+st.sidebar.markdown("---")
 
-# Dynamic Forecast Horizon calculations
-min_forecast_year = int(df_scen['year'].min())
-max_forecast_year = int(df_scen['year'].max())
+# ---------------------------------------------------------
+# COMMON DATA
+# ---------------------------------------------------------
+common = sorted(
+    list(
+        set(df_hist["country"].unique()).intersection(
+            set(df_scen["country"].unique())
+        )
+    )
+)
+# ---------------------------------------------------------
+# OVERVIEW
+# ---------------------------------------------------------
+if page == "Overview":
 
-# Safety check for historical CO2 values
-if not c_hist.empty:
-    latest_year = int(c_hist['year'].max())
-    latest_co2_series = c_hist[c_hist['year'] == latest_year]['co2']
-    
-    if not latest_co2_series.empty and pd.notna(latest_co2_series.values[0]):
-        latest_co2_val = latest_co2_series.values[0]
-        latest_co2_str = f"{latest_co2_val:,.2f} MtCO₂"
-    else:
-        latest_co2_str = "Data N/A"
-else:
-    latest_year = "N/A"
-    latest_co2_str = "Data N/A"
+    st.title("🌍 Climate Change Trend Analysis Dashboard")
 
-kpi1, kpi2 = st.columns(2)
-kpi1.metric(label=f"Historical CO2 Emissions ({latest_year})", value=latest_co2_str)
-kpi2.metric(label="Forecast Window Horizon", value=f"{min_forecast_year} — {max_forecast_year}")
+    selected_countries = st.multiselect(
+        "Select Countries",
+        common,
+        default=["India"]
+    )
 
-# Section 2: Projections Plotting Frame
-st.subheader("🔮 What-If Mitigation Pathways (2025–2044)")
-c_scen = df_scen[df_scen['country'] == selected_country]
+    metric = st.selectbox(
+        "Emission Metric",
+        ["CO₂"]
+    )
 
-fig = px.line(c_scen, x='year', y='co2_projected', color='scenario',
-              labels={'co2_projected': 'CO₂ Emissions (Mt)', 'year': 'Timeline Year'},
-              title=f"Forecast Scenarios Comparison Vector for {selected_country}")
-st.plotly_chart(fig, use_container_width=True)
+    overview_df = df_hist[
+        (df_hist["country"].isin(selected_countries)) &
+        (df_hist["year"] >= 1990)
+    ]
 
-st.markdown("🔒 *Dashboard successfully configured and running locally via VS Code terminal.*")
+    latest = overview_df[
+        overview_df["country"] == selected_countries[0]
+    ].sort_values("year")
+
+    if not latest.empty:
+
+        latest_year = int(latest["year"].max())
+        latest_value = latest.iloc[-1]["co2"]
+
+        c1, c2 = st.columns(2)
+
+        c1.metric(
+            "Latest CO₂",
+            f"{latest_value:,.2f} Mt"
+        )
+
+        c2.metric(
+            "Latest Year",
+            latest_year
+        )
+
+    fig = px.line(
+        overview_df,
+        x="year",
+        y="co2",
+        color="country",
+        title="Historical CO₂ Emissions (1990 Onwards)"
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
+# ---------------------------------------------------------
+# HISTORICAL
+# ---------------------------------------------------------
+elif page == "Historical Trends":
+
+    st.title("Historical Trends")
+
+    country = st.selectbox(
+        "Select Country",
+        common,
+        key="history"
+    )
+
+    history_df = df_hist[
+        (df_hist["country"] == country) &
+        (df_hist["year"] >= 1990)
+    ]
+
+    fig = px.line(
+        history_df,
+        x="year",
+        y="co2",
+        title=f"{country} CO₂ Emissions (1990 Onwards)"
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
+# ---------------------------------------------------------
+# COUNTRY PROFILE
+# ---------------------------------------------------------
+elif page == "Country Profile":
+
+    st.title("Country Profile")
+
+    country = st.selectbox(
+        "Choose Country",
+        common,
+        key="profile"
+    )
+
+    data = df_hist[
+        df_hist["country"] == country
+    ].sort_values("year")
+
+    latest = data.iloc[-1]
+
+    c1, c2, c3 = st.columns(3)
+
+    c1.metric(
+        "Latest Year",
+        int(latest["year"])
+    )
+
+    c2.metric(
+        "Latest CO₂",
+        f"{latest['co2']:.2f} Mt"
+    )
+
+    if "population" in data.columns:
+        c3.metric(
+            "Population",
+            f"{latest['population']:,.0f}"
+        )
+
+    st.subheader("Historical CO₂ Trend")
+
+    profile_df = data[data["year"] >= 1990]
+
+    fig = px.line(
+        profile_df,
+        x="year",
+        y="co2",
+        title=f"{country} CO₂ Emissions (1990 Onwards)"
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
+# ---------------------------------------------------------
+# FORECASTS
+# ---------------------------------------------------------
+elif page=="Forecasts":
+
+    st.title("Forecast Analysis")
+
+    country=st.selectbox(
+        "Country",
+        common
+    )
+
+    c=df_scen[df_scen.country==country]
+
+    fig=px.line(
+        c,
+        x="year",
+        y="co2_projected",
+        color="scenario",
+        title=f"Forecast Scenarios for {country}"
+    )
+
+    st.plotly_chart(fig,use_container_width=True)
+
+# ---------------------------------------------------------
+# SCENARIO COMPARISON
+# ---------------------------------------------------------
+elif page=="Scenario Comparison":
+
+    st.title("Scenario Comparison")
+
+    country=st.selectbox(
+        "Country",
+        common
+    )
+
+    c=df_scen[df_scen.country==country]
+
+    fig=px.line(
+        c,
+        x="year",
+        y="co2_projected",
+        color="scenario",
+        markers=True
+    )
+
+    st.plotly_chart(fig,use_container_width=True)
+
+    st.dataframe(c)
+
+# ---------------------------------------------------------
+# ABOUT
+# ---------------------------------------------------------
+elif page=="About":
+
+    st.title("About")
+
+    st.markdown("""
+### 🌍 GHG Trend Analysis
+
+This dashboard was developed for the **IDEAS TIH Summer Internship 2026**.
+
+### Features
+
+- Historical CO₂ Emission Trends
+- Country-wise Analysis
+- Forecasting (2025–2044)
+- Scenario Comparison
+- Interactive Plotly Charts
+***Mentor: Sauparna Sarkar***
+""")
